@@ -1,0 +1,86 @@
+
+```{r }
+library(ggplot2)
+library(caret)
+library(openxlsx)
+library(randomForest)
+
+pacman::p_load(plyr, dplyr, tidyr)
+pacman::p_load(readr, haven)
+select<-dplyr::select
+
+set.seed(124)
+
+## Load Data
+setwd("C:/!KRISTINA/!COURSERA/R_Practical Machine Learning/Course Project")
+
+df_training<-read.csv("pml-training.csv")  
+df_testing<-read.csv("pml-testing.csv")
+
+head(df_training)
+names(df_training)
+
+## Removing 7 columns - dummy variables
+dummy <-c("X", "user_name","raw_timestamp_part_1","raw_timestamp_part_2","cvtd_timestamp" ,
+          "new_window" ,"num_window")  
+
+ 
+## select variable which have large number of "NA" (for <=50% we can imputation value)
+varlist<-df_training %>% 
+  mutate_each(funs(ifelse(.=="", NA,.))) %>% 
+  summarise_all(funs(sum(is.na(.)))) %>% t(.) %>% 
+  data.frame(var=row.names(.), countNA=.)%>% 
+  filter(countNA<=dim(df_training)[1]*0.75)  %>%  
+  filter(!var %in% dummy) 
+
+varlist$var
+
+##  Dividing the df_training on train and test
+inTrain <- createDataPartition(df_training$classe, p = 0.70, list = F) 
+train <- df_training[inTrain, ]  %>% select(as.character(varlist$var)) 
+test <- df_training[-inTrain, ] %>% select(as.character(varlist$var))
+
+
+## check and  remove variabels which are highly correlated
+corMatrix<-cor(select(train,- classe))
+var_highCorr<-findCorrelation(corMatrix, verbose = F, cutoff = .95, names=F)
+var_highCorr
+
+## Modeling the data caret
+mod_rf <- train(classe~., method="rf", data=train[, -var_highCorr], 
+              trControl = trainControl(method="cv"), number=5)
+mod_rf$finalModel
+
+## check model in test data
+test_pred <- predict(mod_rf, newdata=test)
+confusionMatrix(test_pred, test$classe)
+
+## importance variables
+VarImportance_rf <- varImp(mod_rf, scale=T) 
+plot(VarImportance_rf)
+
+##  var2 using  randomForest
+model_rf_v2 <- randomForest(classe~., data=train[, -var_highCorr], importance=TRUE)
+model_rf_v2
+varImpPlot(model_rf_v2, top=15, main="Variable Importance")
+confusionMatrix(predict(model_rf_v2, test), test$classe)
+
+
+### predict 20 test cases available in the test data
+testing_pred <- predict(mod_rf, newdata=df_testing)
+testing_pred
+df_testing_res <-cbind(df_testing, classe=testing_pred)
+
+## save data with resualts 
+write.csv(df_testing_res, "pml-testing-res.csv")
+
+
+Sys.setenv(PATH = paste(Sys.getenv("PATH"), "C:\\Users\\kapozh\\AppData\\Local\\Programs\\MiKTeX 2.9\\miktex\\bin", sep=.Platform$path.sep))
+```
+
+
+---
+title: "Run.R"
+author: "kapozh"
+date: "Thu Feb 08 14:11:17 2018"
+---
